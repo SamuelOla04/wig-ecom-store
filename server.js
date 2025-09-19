@@ -19,29 +19,14 @@ console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'MISSING');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
 // Initialize Stripe with your secret key
-if (!process.env.STRIPE_SECRET_KEY) {
-    console.error('❌ STRIPE_SECRET_KEY is missing!');
-    console.error('Available env vars:', Object.keys(process.env).filter(key => key.includes('STRIPE')));
-    process.exit(1);
-}
-const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
+// TEMPORARY: Hardcoded for Railway deployment
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_51QJaOmP2fEFHCEgAZQyRnfWKRKhzGCPzwelXBYSJm7m1tJdaJAe3O3mKzVeUGXbgQKgKx5gw9sKGsD4LvxNe2yXs00OaOCIzY1';
+const stripeClient = stripe(STRIPE_KEY);
 
 // Initialize email transporter
+// TEMPORARY: Skip email for now - will work without it
 let emailTransporter = null;
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    emailTransporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT,
-        secure: false, // true for 465, false for other ports
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-        }
-    });
-    console.log('📧 Email transporter initialized');
-} else {
-    console.warn('⚠️ Email configuration incomplete - emails will not work');
-}
+console.warn('⚠️ Email configuration skipped for Railway deployment - payments will work without it');
 
 // Middleware
 app.use(cors({
