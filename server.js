@@ -3,24 +3,45 @@ const cors = require('cors');
 const stripe = require('stripe');
 const nodemailer = require('nodemailer');
 const path = require('path');
-require('dotenv').config();
+
+// Only use dotenv in development
+if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config();
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Debug: Check what environment variables are available
+console.log('🔍 Environment variables available:');
+console.log('STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? 'SET' : 'MISSING');
+console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'MISSING');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
 // Initialize Stripe with your secret key
+if (!process.env.STRIPE_SECRET_KEY) {
+    console.error('❌ STRIPE_SECRET_KEY is missing!');
+    console.error('Available env vars:', Object.keys(process.env).filter(key => key.includes('STRIPE')));
+    process.exit(1);
+}
 const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
 
 // Initialize email transporter
-const emailTransporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: false, // true for 465, false for other ports
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
+let emailTransporter = null;
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    emailTransporter = nodemailer.createTransport({
+        host: process.env.EMAIL_HOST,
+        port: process.env.EMAIL_PORT,
+        secure: false, // true for 465, false for other ports
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        }
+    });
+    console.log('📧 Email transporter initialized');
+} else {
+    console.warn('⚠️ Email configuration incomplete - emails will not work');
+}
 
 // Middleware
 app.use(cors({
@@ -395,10 +416,15 @@ Thank you for choosing LUXE WIGS!
 // Function to send order confirmation email
 async function sendOrderConfirmationEmail(orderDetails) {
     try {
+        if (!emailTransporter) {
+            console.warn('⚠️ Email not configured - skipping email notification');
+            return { success: false, error: 'Email not configured' };
+        }
+
         const emailContent = createOrderConfirmationEmail(orderDetails);
         
         const mailOptions = {
-            from: process.env.EMAIL_FROM,
+            from: process.env.EMAIL_FROM || 'LUXE WIGS <noreply@example.com>',
             to: orderDetails.customerEmail,
             subject: emailContent.subject,
             html: emailContent.html,
@@ -477,18 +503,17 @@ app.listen(PORT, () => {
     console.log(`📁 Serving static files from: ${path.join(__dirname, '..')}`);
     console.log(`💳 Stripe integration ready`);
     
-    if (!process.env.STRIPE_SECRET_KEY) {
-        console.warn('⚠️  STRIPE_SECRET_KEY not found in environment variables');
-    }
     if (!process.env.STRIPE_WEBHOOK_SECRET) {
         console.warn('⚠️  STRIPE_WEBHOOK_SECRET not found in environment variables');
     }
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         console.warn('⚠️  EMAIL configuration incomplete - order confirmation emails will not work');
         console.warn('   Add EMAIL_USER and EMAIL_PASS to your .env file');
-    } else {
+    } else { 
         console.log('📧 Email notifications ready');
     }
 });
 
 module.exports = app;
+
+
