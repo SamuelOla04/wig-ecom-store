@@ -1,0 +1,26 @@
+# Create a .env file in this directory with these variables:
+
+# Stripe Configuration
+STRIPE_PUBLISHABLE_KEY=pk_test_your_publishable_key_here
+STRIPE_SECRET_KEY=sk_test_your_secret_key_here
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
+
+# Server Configuration
+PORT=3000
+NODE_ENV=development
+
+# Database Configuration (for future use)
+# DATABASE_URL=your_database_url_here
+
+# Email Configuration - REQUIRED for order notifications
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your_business_email@gmail.com
+EMAIL_PASS=your_app_password
+EMAIL_FROM="LUXE WIGS <your_business_email@gmail.com>"
+
+# Instructions:
+# 1. Copy this file and rename it to ".env"
+# 2. Replace the placeholder values with your actual Stripe keys
+# 3. Get your Stripe keys from: https://dashboard.stripe.com/apikeys
+# 4. Set up webhooks at: https://dashboard.stripe.com/webhooks
