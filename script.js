@@ -492,18 +492,17 @@ app.listen(PORT, () => {
     console.log(`📁 Serving static files from: ${path.join(__dirname, '..')}`);
     console.log(`💳 Stripe integration ready`);
     
-    if (!process.env.STRIPE_SECRET_KEY) {
-        console.warn('⚠️  STRIPE_SECRET_KEY not found in environment variables');
-    }
     if (!process.env.STRIPE_WEBHOOK_SECRET) {
         console.warn('⚠️  STRIPE_WEBHOOK_SECRET not found in environment variables');
     }
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         console.warn('⚠️  EMAIL configuration incomplete - order confirmation emails will not work');
         console.warn('   Add EMAIL_USER and EMAIL_PASS to your .env file');
-    } else {
+    } else { 
         console.log('📧 Email notifications ready');
     }
 });
 
 module.exports = app;
+
+
