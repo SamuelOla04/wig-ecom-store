@@ -58,12 +58,21 @@ app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the parent directory (your frontend)
-app.use(express.static(path.join(__dirname, '..')));
+// Serve static files - try multiple paths for Railway compatibility
+const staticPaths = [
+    path.join(__dirname, '..'),           // Parent directory
+    path.join(__dirname, '../public'),    // Public folder
+    path.join(__dirname),                 // Current directory
+    path.join(process.cwd()),            // Process working directory
+    path.join(process.cwd(), 'public')   // Process cwd + public
+];
 
-// Also try serving from current directory in case of Railway path issues
-app.use(express.static(path.join(__dirname, '../')));
-app.use(express.static(path.join(__dirname)));
+// Log available paths for debugging
+console.log('📁 Attempting to serve static files from these paths:');
+staticPaths.forEach((staticPath, index) => {
+    console.log(`${index + 1}. ${staticPath}`);
+    app.use(express.static(staticPath));
+});
 
 // In-memory order tracking (in production, use a database)
 const orders = new Map();
@@ -106,9 +115,38 @@ const products = {
 
 // Routes
 
-// Serve the main HTML file
+// Serve the main HTML file - try multiple paths
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
+    const possiblePaths = [
+        path.join(__dirname, '..', 'index.html'),
+        path.join(__dirname, 'index.html'),
+        path.join(process.cwd(), 'index.html'),
+        path.join(process.cwd(), 'public', 'index.html')
+    ];
+    
+    console.log('🏠 Attempting to serve index.html from these paths:');
+    
+    for (let i = 0; i < possiblePaths.length; i++) {
+        const filePath = possiblePaths[i];
+        console.log(`${i + 1}. ${filePath}`);
+        
+        try {
+            if (require('fs').existsSync(filePath)) {
+                console.log(`✅ Found index.html at: ${filePath}`);
+                return res.sendFile(filePath);
+            }
+        } catch (error) {
+            console.log(`❌ Error checking ${filePath}:`, error.message);
+        }
+    }
+    
+    // If no index.html found, send a debug response
+    res.json({
+        error: 'index.html not found',
+        attemptedPaths: possiblePaths,
+        currentDir: __dirname,
+        processDir: process.cwd()
+    });
 });
 
 // Get all products
@@ -280,15 +318,128 @@ app.get('/success', async (req, res) => {
                 <html>
                 <head>
                     <title>Payment Success - LUXE WIGS</title>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
                     <link rel="stylesheet" href="style.css">
+                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+                    <style>
+                        .success-container {
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 2rem;
+                            background: var(--background-color);
+                        }
+                        
+                        .success-glass-card {
+                            background: rgba(255, 255, 255, 0.1);
+                            backdrop-filter: blur(20px);
+                            border: 1px solid rgba(255, 255, 255, 0.2);
+                            border-radius: 20px;
+                            padding: 3rem 2rem;
+                            text-align: center;
+                            max-width: 500px;
+                            width: 100%;
+                            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                        }
+                        
+                        .success-tick {
+                            font-size: 4rem;
+                            color: var(--gold-accent);
+                            margin-bottom: 1.5rem;
+                            animation: tickPulse 0.6s ease-out;
+                        }
+                        
+                        .success-title {
+                            font-family: var(--font-headline);
+                            font-size: 2.5rem;
+                            color: var(--text-color);
+                            margin-bottom: 1rem;
+                            letter-spacing: 1px;
+                        }
+                        
+                        .success-session {
+                            font-family: var(--font-accent);
+                            color: rgba(255, 255, 255, 0.7);
+                            font-size: 0.9rem;
+                            margin-bottom: 2rem;
+                            padding: 1rem;
+                            background: rgba(0, 0, 0, 0.3);
+                            border-radius: 10px;
+                            word-break: break-all;
+                        }
+                        
+                        .success-amount {
+                            font-family: var(--font-headline);
+                            font-size: 1.5rem;
+                            color: var(--gold-accent);
+                            margin-bottom: 2rem;
+                        }
+                        
+                        .success-cta {
+                            background: linear-gradient(135deg, var(--gold-accent), #f4d03f);
+                            color: var(--background-color);
+                            font-family: var(--font-accent);
+                            font-weight: 600;
+                            padding: 1rem 2.5rem;
+                            border: none;
+                            border-radius: 50px;
+                            text-decoration: none;
+                            display: inline-block;
+                            font-size: 1.1rem;
+                            transition: all 0.3s ease;
+                            letter-spacing: 0.5px;
+                            text-transform: uppercase;
+                        }
+                        
+                        .success-cta:hover {
+                            transform: translateY(-2px);
+                            box-shadow: 0 8px 25px rgba(212, 175, 55, 0.4);
+                            background: linear-gradient(135deg, #f4d03f, var(--gold-accent));
+                        }
+                        
+                        @keyframes tickPulse {
+                            0% { transform: scale(0); opacity: 0; }
+                            50% { transform: scale(1.1); opacity: 1; }
+                            100% { transform: scale(1); opacity: 1; }
+                        }
+                        
+                        @media (max-width: 768px) {
+                            .success-glass-card {
+                                padding: 2rem 1.5rem;
+                                margin: 1rem;
+                            }
+                            
+                            .success-title {
+                                font-size: 2rem;
+                            }
+                            
+                            .success-tick {
+                                font-size: 3rem;
+                            }
+                        }
+                    </style>
                 </head>
                 <body>
-                    <div class="container" style="text-align: center; padding: 50px;">
-                        <h1>Payment Successful!</h1>
-                        <p>Thank you for your purchase. Your order has been confirmed.</p>
-                        <p>Session ID: ${session.id}</p>
-                        <p>Amount: $${(session.amount_total / 100).toFixed(2)}</p>
-                        <a href="/" class="cta-button">Continue Shopping</a>
+                    <div class="success-container">
+                        <div class="success-glass-card">
+                            <div class="success-tick">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            
+                            <h1 class="success-title">Payment Successful!</h1>
+                            
+                            <div class="success-session">
+                                Session ID: ${session.id}
+                            </div>
+                            
+                            <div class="success-amount">
+                                $${(session.amount_total / 100).toFixed(2)}
+                            </div>
+                            
+                            <a href="/" class="success-cta">Continue Shopping</a>
+                        </div>
                     </div>
                 </body>
                 </html>
@@ -302,13 +453,114 @@ app.get('/success', async (req, res) => {
             <html>
             <head>
                 <title>Payment Success - LUXE WIGS</title>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <link rel="stylesheet" href="style.css">
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+                <style>
+                    .success-container {
+                        min-height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 2rem;
+                        background: var(--background-color);
+                    }
+                    
+                    .success-glass-card {
+                        background: rgba(255, 255, 255, 0.1);
+                        backdrop-filter: blur(20px);
+                        border: 1px solid rgba(255, 255, 255, 0.2);
+                        border-radius: 20px;
+                        padding: 3rem 2rem;
+                        text-align: center;
+                        max-width: 500px;
+                        width: 100%;
+                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                    }
+                    
+                    .success-tick {
+                        font-size: 4rem;
+                        color: var(--gold-accent);
+                        margin-bottom: 1.5rem;
+                        animation: tickPulse 0.6s ease-out;
+                    }
+                    
+                    .success-title {
+                        font-family: var(--font-headline);
+                        font-size: 2.5rem;
+                        color: var(--text-color);
+                        margin-bottom: 1rem;
+                        letter-spacing: 1px;
+                    }
+                    
+                    .success-message {
+                        font-family: var(--font-body);
+                        color: rgba(255, 255, 255, 0.8);
+                        font-size: 1.1rem;
+                        margin-bottom: 2rem;
+                        line-height: 1.6;
+                    }
+                    
+                    .success-cta {
+                        background: linear-gradient(135deg, var(--gold-accent), #f4d03f);
+                        color: var(--background-color);
+                        font-family: var(--font-accent);
+                        font-weight: 600;
+                        padding: 1rem 2.5rem;
+                        border: none;
+                        border-radius: 50px;
+                        text-decoration: none;
+                        display: inline-block;
+                        font-size: 1.1rem;
+                        transition: all 0.3s ease;
+                        letter-spacing: 0.5px;
+                        text-transform: uppercase;
+                    }
+                    
+                    .success-cta:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 8px 25px rgba(212, 175, 55, 0.4);
+                        background: linear-gradient(135deg, #f4d03f, var(--gold-accent));
+                    }
+                    
+                    @keyframes tickPulse {
+                        0% { transform: scale(0); opacity: 0; }
+                        50% { transform: scale(1.1); opacity: 1; }
+                        100% { transform: scale(1); opacity: 1; }
+                    }
+                    
+                    @media (max-width: 768px) {
+                        .success-glass-card {
+                            padding: 2rem 1.5rem;
+                            margin: 1rem;
+                        }
+                        
+                        .success-title {
+                            font-size: 2rem;
+                        }
+                        
+                        .success-tick {
+                            font-size: 3rem;
+                        }
+                    }
+                </style>
             </head>
             <body>
-                <div class="container" style="text-align: center; padding: 50px;">
-                    <h1>Payment Successful!</h1>
-                    <p>Thank you for your purchase!</p>
-                    <a href="/" class="cta-button">Continue Shopping</a>
+                <div class="success-container">
+                    <div class="success-glass-card">
+                        <div class="success-tick">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        
+                        <h1 class="success-title">Payment Successful!</h1>
+                        
+                        <p class="success-message">
+                            Thank you for your purchase! Your order has been confirmed and you'll receive an email confirmation shortly.
+                        </p>
+                        
+                        <a href="/" class="success-cta">Continue Shopping</a>
+                    </div>
                 </div>
             </body>
             </html>
