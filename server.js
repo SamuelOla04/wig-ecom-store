@@ -61,6 +61,10 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from the parent directory (your frontend)
 app.use(express.static(path.join(__dirname, '..')));
 
+// Also try serving from current directory in case of Railway path issues
+app.use(express.static(path.join(__dirname, '../')));
+app.use(express.static(path.join(__dirname)));
+
 // In-memory order tracking (in production, use a database)
 const orders = new Map();
 
