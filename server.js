@@ -3,7 +3,7 @@ const cors = require('cors');
 const stripe = require('stripe');
 const nodemailer = require('nodemailer');
 const path = require('path');
-const cron = require('node-cron');
+// const cron = require('node-cron'); // Temporarily disabled
 
 // Only use dotenv in development
 if (process.env.NODE_ENV !== 'production') {
@@ -648,7 +648,8 @@ async function sendCountdownEmail(order, daysLeft) {
     }
 }
 
-// Daily email countdown cron job (runs at 10 AM every day)
+// Daily email countdown cron job (runs at 10 AM every day) - TEMPORARILY DISABLED
+/*
 cron.schedule('0 10 * * *', async () => {
     console.log('🕙 Running daily email countdown check...');
     
@@ -679,6 +680,7 @@ cron.schedule('0 10 * * *', async () => {
         }
     }
 });
+*/
 
 // Error handling middleware
 app.use((err, req, res, next) => {
