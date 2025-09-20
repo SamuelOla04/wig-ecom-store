@@ -3,6 +3,7 @@ const cors = require('cors');
 const stripe = require('stripe');
 const nodemailer = require('nodemailer');
 const path = require('path');
+const cron = require('node-cron');
 
 // Only use dotenv in development
 if (process.env.NODE_ENV !== 'production') {
@@ -19,14 +20,30 @@ console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'MISSING');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
 // Initialize Stripe with your secret key
-// TEMPORARY: Hardcoded for Railway deployment
-const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_51QJaOmP2fEFHCEgAZQyRnfWKRKhzGCPzwelXBYSJm7m1tJdaJAe3O3mKzVeUGXbgQKgKx5gw9sKGsD4LvxNe2yXs00OaOCIzY1';
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+if (!STRIPE_KEY) {
+    console.error('❌ STRIPE_SECRET_KEY is required! Please add it to your .env file');
+    process.exit(1);
+}
+console.log('💳 Using Stripe key:', STRIPE_KEY ? 'SET' : 'MISSING');
 const stripeClient = stripe(STRIPE_KEY);
 
 // Initialize email transporter
-// TEMPORARY: Skip email for now - will work without it
 let emailTransporter = null;
-console.warn('⚠️ Email configuration skipped for Railway deployment - payments will work without it');
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    emailTransporter = nodemailer.createTransport({
+        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: process.env.EMAIL_PORT || 587,
+        secure: false,
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        }
+    });
+    console.log('📧 Email transporter initialized');
+} else {
+    console.warn('⚠️ Email configuration incomplete - emails will not work (payments still work!)');
+}
 
 // Middleware
 app.use(cors({
@@ -43,6 +60,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from the parent directory (your frontend)
 app.use(express.static(path.join(__dirname, '..')));
+
+// In-memory order tracking (in production, use a database)
+const orders = new Map();
 
 // Product data (in a real app, this would come from a database)
 const products = {
@@ -314,7 +334,7 @@ app.get('/cancel', (req, res) => {
 
 // Email template function
 function createOrderConfirmationEmail(orderDetails) {
-    const { customerName, customerEmail, orderItems, totalAmount, orderId } = orderDetails;
+    const { customerName, customerEmail, orderItems, totalAmount, orderId, deliveryDate } = orderDetails;
     
     const itemsList = orderItems.map(item => 
         `• ${item.name} (Qty: ${item.quantity}) - $${(item.price * item.quantity / 100).toFixed(2)}`
@@ -359,9 +379,9 @@ function createOrderConfirmationEmail(orderDetails) {
                         
                         <div class="shipping-info">
                             <h3>📦 Shipping Information</h3>
-                            <p><strong>Estimated Delivery:</strong> 7-14 business days</p>
+                            <p><strong>Expected Delivery:</strong> ${deliveryDate ? deliveryDate.toDateString() : '7-14 business days'}</p>
                             <p>Your premium wig will be carefully packaged and shipped to the address provided during checkout.</p>
-                            <p>You will receive a tracking number once your order ships.</p>
+                            <p>You will receive daily countdown reminders and tracking information!</p>
                         </div>
                         
                         <p>If you have any questions about your order, please don't hesitate to contact us.</p>
@@ -454,6 +474,21 @@ async function handleSuccessfulPayment(paymentData) {
                 price: totalAmount
             }];
         }
+
+        // Store order for tracking
+        const deliveryDate = new Date();
+        deliveryDate.setDate(deliveryDate.getDate() + 7); // 7 days delivery
+        
+        orders.set(orderId, {
+            id: orderId,
+            customerName,
+            customerEmail,
+            orderItems,
+            totalAmount,
+            orderDate: new Date(),
+            deliveryDate,
+            emailsSent: 0 // Track how many countdown emails sent
+        });
         
         // Send confirmation email
         const emailResult = await sendOrderConfirmationEmail({
@@ -461,20 +496,189 @@ async function handleSuccessfulPayment(paymentData) {
             customerEmail,
             orderItems,
             totalAmount,
-            orderId
+            orderId,
+            deliveryDate
         });
         
         console.log('Order details:', {
             id: orderId,
             amount: totalAmount,
             customer: customerEmail,
-            emailSent: emailResult.success
+            emailSent: emailResult.success,
+            deliveryDate: deliveryDate.toDateString()
         });
         
     } catch (error) {
         console.error('Error processing successful payment:', error);
     }
 }
+
+// Countdown email template
+function createCountdownEmail(order, daysLeft) {
+    const { customerName, orderId, orderItems, deliveryDate } = order;
+    
+    let message = '';
+    let emoji = '';
+    
+    if (daysLeft === 6) {
+        message = 'Your amazing new wig is on its way!';
+        emoji = '🚛';
+    } else if (daysLeft === 5) {
+        message = 'Just 5 more days until your wig arrives!';
+        emoji = '📦';
+    } else if (daysLeft === 4) {
+        message = 'Getting closer! 4 days to go!';
+        emoji = '⏰';
+    } else if (daysLeft === 3) {
+        message = 'Only 3 days left - almost there!';
+        emoji = '✨';
+    } else if (daysLeft === 2) {
+        message = 'Just 2 more days - prepare for your new look!';
+        emoji = '🎉';
+    } else if (daysLeft === 1) {
+        message = 'Tomorrow is the day! Your wig arrives soon!';
+        emoji = '🎊';
+    } else if (daysLeft === 0) {
+        message = 'Delivery day is here! Your wig should arrive today!';
+        emoji = '🎁';
+    }
+
+    return {
+        subject: `${emoji} ${daysLeft === 0 ? 'Delivery Day' : `${daysLeft} Days Left`} - LUXE WIGS Order #${orderId}`,
+        html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                    .content { padding: 30px; background: #f9f9f9; border-radius: 0 0 10px 10px; }
+                    .countdown { background: white; padding: 25px; margin: 20px 0; border-radius: 10px; text-align: center; border: 3px solid #667eea; }
+                    .countdown h2 { color: #667eea; font-size: 2.5em; margin: 0; }
+                    .order-summary { background: white; padding: 20px; margin: 15px 0; border-radius: 8px; }
+                    .footer { text-align: center; padding: 20px; color: #666; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>${emoji} LUXE WIGS</h1>
+                        <p>${message}</p>
+                    </div>
+                    
+                    <div class="content">
+                        <h2>Hi ${customerName}! 👋</h2>
+                        
+                        <div class="countdown">
+                            <h2>${daysLeft === 0 ? 'TODAY!' : `${daysLeft} DAYS`}</h2>
+                            <p>${daysLeft === 0 ? 'Your delivery should arrive today!' : `Until your stunning wig arrives on ${deliveryDate.toDateString()}`}</p>
+                        </div>
+                        
+                        <div class="order-summary">
+                            <h3>📋 Your Order #${orderId}</h3>
+                            ${orderItems.map(item => `
+                                <p>• ${item.name} (Qty: ${item.quantity})</p>
+                            `).join('')}
+                        </div>
+                        
+                        ${daysLeft === 0 ? 
+                            '<p>🏠 <strong>Keep an eye out for your delivery today!</strong> Make sure someone is available to receive your package.</p>' :
+                            '<p>🚚 Your order is being carefully prepared and will be delivered exactly on time!</p>'
+                        }
+                        
+                        <p>Questions? Just reply to this email - we're here to help! 💝</p>
+                    </div>
+                    
+                    <div class="footer">
+                        <p>Thank you for choosing LUXE WIGS!</p>
+                        <p>📧 contact@luxewigs.com | 📞 +1 (234) 567-890</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `,
+        text: `
+Hi ${customerName}!
+
+${message}
+
+${daysLeft === 0 ? 'TODAY!' : `${daysLeft} DAYS LEFT`}
+${daysLeft === 0 ? 'Your delivery should arrive today!' : `Until your wig arrives on ${deliveryDate.toDateString()}`}
+
+Your Order #${orderId}:
+${orderItems.map(item => `• ${item.name} (Qty: ${item.quantity})`).join('\n')}
+
+${daysLeft === 0 ? 
+    'Keep an eye out for your delivery today! Make sure someone is available to receive your package.' :
+    'Your order is being carefully prepared and will be delivered exactly on time!'
+}
+
+Questions? Just reply to this email - we're here to help!
+
+Thank you for choosing LUXE WIGS!
+        `
+    };
+}
+
+// Send countdown email
+async function sendCountdownEmail(order, daysLeft) {
+    try {
+        if (!emailTransporter) {
+            console.log(`⚠️ Email not configured - would send ${daysLeft}-day countdown to ${order.customerEmail}`);
+            return { success: false, error: 'Email not configured' };
+        }
+
+        const emailContent = createCountdownEmail(order, daysLeft);
+        
+        const mailOptions = {
+            from: process.env.EMAIL_FROM || 'LUXE WIGS <noreply@example.com>',
+            to: order.customerEmail,
+            subject: emailContent.subject,
+            html: emailContent.html,
+            text: emailContent.text
+        };
+
+        const info = await emailTransporter.sendMail(mailOptions);
+        console.log(`✅ Countdown email sent (${daysLeft} days) to ${order.customerEmail}:`, info.messageId);
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error(`❌ Failed to send countdown email to ${order.customerEmail}:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Daily email countdown cron job (runs at 10 AM every day)
+cron.schedule('0 10 * * *', async () => {
+    console.log('🕙 Running daily email countdown check...');
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (const [orderId, order] of orders.entries()) {
+        const deliveryDate = new Date(order.deliveryDate);
+        deliveryDate.setHours(0, 0, 0, 0);
+        
+        const diffTime = deliveryDate - today;
+        const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        // Send emails for days 6, 5, 4, 3, 2, 1, and 0 (delivery day)
+        if (daysLeft >= 0 && daysLeft <= 6) {
+            // Check if we already sent this day's email
+            if (order.emailsSent < (7 - daysLeft)) {
+                await sendCountdownEmail(order, daysLeft);
+                order.emailsSent = 7 - daysLeft; // Update emails sent count
+                orders.set(orderId, order); // Update the order
+            }
+        }
+        
+        // Clean up old orders (7 days after delivery)
+        if (daysLeft < -7) {
+            orders.delete(orderId);
+            console.log(`🗑️ Cleaned up old order: ${orderId}`);
+        }
+    }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -494,8 +698,10 @@ app.listen(PORT, () => {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         console.warn('⚠️  EMAIL configuration incomplete - order confirmation emails will not work');
         console.warn('   Add EMAIL_USER and EMAIL_PASS to your .env file');
+        console.warn('   📅 Daily countdown emails will also be disabled');
     } else { 
         console.log('📧 Email notifications ready');
+        console.log('📅 Daily countdown email system active (runs at 10 AM)');
     }
 });
 
